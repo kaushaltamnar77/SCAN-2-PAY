@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UPI QR Code Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen py-10 px-4">
+
+    <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6">
+        <h1 class="text-3xl font-bold text-center text-indigo-600 mb-8">SCAN 2 PAY </h1>
+        
+        <div class="flex border-b border-gray-200 mb-6">
+            <button id="tab-standard" class="w-1/2 py-3 text-center font-medium text-indigo-600 border-b-2 border-indigo-600 focus:outline-none" onclick="switchTab('standard')">
+                Standard QR Generator
+            </button>
+            <button id="tab-quick" class="w-1/2 py-3 text-center font-medium text-gray-500 hover:text-indigo-600 focus:outline-none" onclick="switchTab('quick')">
+                Quick Pay (Saved IDs)
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+                <!-- Standard QR Form -->
+                <div id="form-standard" class="space-y-4">
+                    <h2 class="text-xl font-semibold text-gray-800">Custom QR Code</h2>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">UPI ID (VPA)</label>
+                        <input type="text" id="std-vpa" placeholder="example@oksbi" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Amount (₹)</label>
+                        <input type="number" id="std-amount" placeholder="0.00" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <button onclick="generateStandardQR()" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 font-medium">
+                        Generate QR Code
+                    </button>
+                </div>
+
+                <!-- Quick Pay Form -->
+                <div id="form-quick" class="space-y-4 hidden">
+                    <h2 class="text-xl font-semibold text-gray-800">Quick Pay</h2>
+                    
+                    <details class="bg-gray-50 p-3 rounded-md border border-gray-200">
+                        <summary class="cursor-pointer font-medium text-sm text-gray-600 select-none">Manage Saved UPI IDs (Max 10)</summary>
+                        <div class="mt-3 space-y-2">
+                            <div class="flex gap-2">
+                                <input type="text" id="new-vpa" placeholder="Enter UPI ID (e.g., upi@id)" class="w-full p-2 text-sm border rounded-md shadow-sm bg-white">
+                            </div>
+                            <button onclick="saveUPI()" class="w-full bg-green-600 text-white text-sm py-2 rounded hover:bg-green-700 font-medium">Add Account</button>
+                            <ul id="saved-list" class="text-xs space-y-1 max-h-32 overflow-y-auto mt-2 divide-y divide-gray-200">
+                            </ul>
+                        </div>
+                    </details>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Select Account</label>
+                        <select id="quick-select" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-white">
+                            <option value="">-- Choose a saved UPI ID --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Amount (₹)</label>
+                        <input type="number" id="quick-amount" placeholder="0.00" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <button onclick="generateQuickQR()" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 font-medium">
+                        Generate Quick QR
+                    </button>
+                </div>
+            </div>
+
+            <!-- QR Output Display Area -->
+            <div class="flex flex-col items-center justify-center border-t md:border-t-0 md:border-l border-gray-200 pt-6 md:pt-0">
+                <div id="qrcode-container" class="bg-white p-4 border-2 border-dashed border-gray-300 rounded-lg min-w-[230px] min-h-[230px] flex items-center justify-center">
+                    <div id="qrcode"></div>
+                </div>
+                <!-- This label container is kept completely blank now -->
+                <p id="qr-meta" class="mt-4 text-sm font-medium text-gray-600 text-center"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let qrcodeInstance = null;
+        let savedAccounts = JSON.parse(localStorage.getItem('quick_upi_ids')) || [];
+
+        window.onload = function() {
+            updateSavedAccountsUI();
+        };
+
+        function switchTab(tab) {
+            const stdTab = document.getElementById('tab-standard');
+            const quickTab = document.getElementById('tab-quick');
+            const stdForm = document.getElementById('form-standard');
+            const quickForm = document.getElementById('form-quick');
+
+            if (tab === 'standard') {
+                stdTab.className = "w-1/2 py-3 text-center font-medium text-indigo-600 border-b-2 border-indigo-600 focus:outline-none";
+                quickTab.className = "w-1/2 py-3 text-center font-medium text-gray-500 hover:text-indigo-600 focus:outline-none";
+                stdForm.classList.remove('hidden');
+                quickForm.classList.add('hidden');
+            } else {
+                quickTab.className = "w-1/2 py-3 text-center font-medium text-indigo-600 border-b-2 border-indigo-600 focus:outline-none";
+                stdTab.className = "w-1/2 py-3 text-center font-medium text-gray-500 hover:text-indigo-600 focus:outline-none";
+                quickForm.classList.remove('hidden');
+                stdForm.classList.add('hidden');
+            }
+        }
+
+        function renderQR(upiString) {
+            const qrDiv = document.getElementById("qrcode");
+            qrDiv.innerHTML = ""; 
+
+            qrcodeInstance = new QRCode(qrDiv, {
+                text: upiString,
+                width: 200,
+                height: 200,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.M
+            });
+
+            // Metadata text completely cleared out
+            document.getElementById('qr-meta').innerText = "";
+        }
+
+        function generateStandardQR() {
+            const vpa = document.getElementById('std-vpa').value.trim();
+            const amount = document.getElementById('std-amount').value.trim();
+
+            if (!vpa) {
+                alert("Please enter a valid UPI ID.");
+                return;
+            }
+
+            let upiLink = `upi://pay?pa=${encodeURIComponent(vpa)}&pn=User`;
+            if (amount) {
+                upiLink += `&am=${encodeURIComponent(amount)}&cu=INR`;
+            }
+
+            renderQR(upiLink);
+        }
+
+        function saveUPI() {
+            const vpa = document.getElementById('new-vpa').value.trim();
+
+            if (!vpa) {
+                alert("UPI ID is required.");
+                return;
+            }
+
+            if (savedAccounts.length >= 10) {
+                alert("You can only save up to 10 UPI IDs. Delete one to add more.");
+                return;
+            }
+
+            savedAccounts.push({ vpa });
+            localStorage.setItem('quick_upi_ids', JSON.stringify(savedAccounts));
+            
+            document.getElementById('new-vpa').value = '';
+            updateSavedAccountsUI();
+        }
+
+        function deleteAccount(index) {
+            savedAccounts.splice(index, 1);
+            localStorage.setItem('quick_upi_ids', JSON.stringify(savedAccounts));
+            updateSavedAccountsUI();
+        }
+
+        function updateSavedAccountsUI() {
+            const listEl = document.getElementById('saved-list');
+            const selectEl = document.getElementById('quick-select');
+            
+            listEl.innerHTML = '';
+            selectEl.innerHTML = '<option value="">-- Choose a saved UPI ID --</option>';
+
+            savedAccounts.forEach((acc, index) => {
+                const li = document.createElement('li');
+                li.className = "flex justify-between items-center py-1";
+                li.innerHTML = `
+                    <span class="font-medium text-gray-700">${acc.vpa}</span>
+                    <button onclick="deleteAccount(${index})" class="text-red-500 hover:text-red-700 font-bold px-1">✕</button>
+                `;
+                listEl.appendChild(li);
+
+                const opt = document.createElement('option');
+                opt.value = acc.vpa;
+                opt.textContent = acc.vpa;
+                selectEl.appendChild(opt);
+            });
+        }
+
+        function generateQuickQR() {
+            const vpa = document.getElementById('quick-select').value;
+            const amount = document.getElementById('quick-amount').value.trim();
+
+            if (!vpa) {
+                alert("Please select a saved account.");
+                return;
+            }
+            if (!amount) {
+                alert("Please enter an amount.");
+                return;
+            }
+
+            let upiLink = `upi://pay?pa=${encodeURIComponent(vpa)}&am=${encodeURIComponent(amount)}&cu=INR`;
+            renderQR(upiLink);
+        }
+    </script>
+</body>
+</html>
