@@ -10,7 +10,7 @@
 <body class="bg-gray-100 min-h-screen py-10 px-4">
 
     <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6">
-        <h1 class="text-3xl font-bold text-center text-indigo-600 mb-8">SCAN 2 PAY </h1>
+        <h1 class="text-3xl font-bold text-center text-indigo-600 mb-8">SCAN 2 PAY</h1>
         
         <div class="flex border-b border-gray-200 mb-6">
             <button id="tab-standard" class="w-1/2 py-3 text-center font-medium text-indigo-600 border-b-2 border-indigo-600 focus:outline-none" onclick="switchTab('standard')">
@@ -76,9 +76,35 @@
                 <div id="qrcode-container" class="bg-white p-4 border-2 border-dashed border-gray-300 rounded-lg min-w-[230px] min-h-[230px] flex items-center justify-center">
                     <div id="qrcode"></div>
                 </div>
-                <!-- This label container is kept completely blank now -->
                 <p id="qr-meta" class="mt-4 text-sm font-medium text-gray-600 text-center"></p>
+
+                <!-- Action Buttons Container (Hidden until QR is generated) -->
+                <div id="qr-actions" class="w-full max-w-[230px] mt-4 space-y-2 hidden">
+                    <button onclick="viewQRCode()" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 font-medium text-sm">
+                        View QR Code
+                    </button>
+                    <button onclick="shareQRCode()" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 font-medium text-sm">
+                        Share QR Code
+                    </button>
+                    <button onclick="downloadQRCode()" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 font-medium text-sm">
+                        Download QR Code
+                    </button>
+                </div>
+
+                <!-- Status / Message Container -->
+                <div id="status-message" class="mt-3 text-xs font-medium text-center text-green-600 hidden"></div>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal for Viewing Large QR Code -->
+    <div id="view-modal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50" onclick="closeModal()">
+        <div class="bg-white p-6 rounded-xl max-w-sm w-full flex flex-col items-center" onclick="event.stopPropagation()">
+            <h3 class="text-lg font-bold text-gray-800 mb-4">UPI QR Code</h3>
+            <img id="modal-qr-img" src="" alt="QR Code" class="w-64 h-64">
+            <button onclick="closeModal()" class="mt-6 bg-gray-600 text-white py-2 px-6 rounded-md hover:bg-gray-700 font-medium text-sm">
+                Close
+            </button>
         </div>
     </div>
 
@@ -107,6 +133,12 @@
                 quickForm.classList.remove('hidden');
                 stdForm.classList.add('hidden');
             }
+            hideStatus();
+        }
+
+        function getQRCanvasOrImg() {
+            const qrDiv = document.getElementById("qrcode");
+            return qrDiv.querySelector("canvas") || qrDiv.querySelector("img");
         }
 
         function renderQR(upiString) {
@@ -122,8 +154,9 @@
                 correctLevel : QRCode.CorrectLevel.M
             });
 
-            // Metadata text completely cleared out
             document.getElementById('qr-meta').innerText = "";
+            document.getElementById('qr-actions').classList.remove('hidden');
+            hideStatus();
         }
 
         function generateStandardQR() {
@@ -207,6 +240,90 @@
 
             let upiLink = `upi://pay?pa=${encodeURIComponent(vpa)}&am=${encodeURIComponent(amount)}&cu=INR`;
             renderQR(upiLink);
+        }
+
+        /* --- UI Notifications --- */
+        function showStatus(text, isError = false) {
+            const statusEl = document.getElementById('status-message');
+            statusEl.textContent = text;
+            statusEl.className = `mt-3 text-xs font-medium text-center ${isError ? 'text-red-500' : 'text-green-600'}`;
+            statusEl.classList.remove('hidden');
+        }
+
+        function hideStatus() {
+            document.getElementById('status-message').classList.add('hidden');
+        }
+
+        /* --- QR Code Actions --- */
+
+        function getQRCodeDataURL() {
+            const el = getQRCanvasOrImg();
+            if (!el) return null;
+            return el.tagName.toLowerCase() === 'canvas' ? el.toDataURL("image/png") : el.src;
+        }
+
+        function viewQRCode() {
+            const dataUrl = getQRCodeDataURL();
+            if (!dataUrl) return;
+            document.getElementById('modal-qr-img').src = dataUrl;
+            document.getElementById('view-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('view-modal').classList.add('hidden');
+        }
+
+        function downloadQRCode() {
+            const dataUrl = getQRCodeDataURL();
+            if (!dataUrl) return;
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = 'upi-qr-code.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showStatus("QR Code downloaded successfully!");
+        }
+
+        async function shareQRCode() {
+            const dataUrl = getQRCodeDataURL();
+            if (!dataUrl) return;
+
+            try {
+                const response = await fetch(dataUrl);
+                const blob = await response.blob();
+                const file = new File([blob], 'upi-qr-code.png', { type: 'image/png' });
+
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    // Automatically trigger download as a reliable backup/copy
+                    const a = document.createElement('a');
+                    a.href = dataUrl;
+                    a.download = 'upi-qr-code.png';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+
+                    // Open device native share sheet for apps (WhatsApp, Gmail, Messages, etc.)
+                    await navigator.share({
+                        title: 'UPI Payment QR Code',
+                        text: 'Scan this QR code to make a payment via UPI.',
+                        files: [file]
+                    });
+                    showStatus("Opening apps to share QR code & downloaded successfully!");
+                } else {
+                    // Fallback if system share sheet isn't supported on desktop browser
+                    downloadQRCode();
+                    showStatus("Sharing not supported on this browser. QR Code downloaded instead!", true);
+                }
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error("Error sharing QR code:", err);
+                    downloadQRCode();
+                    showStatus("Downloaded QR code (sharing cancelled/unavailable).");
+                } else {
+                    hideStatus();
+                }
+            }
         }
     </script>
 </body>
